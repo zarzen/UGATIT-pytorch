@@ -6,7 +6,8 @@ from networks import *
 from utils import *
 from glob import glob
 
-class UGATIT(object) :
+class UGATIT_MP(object) :
+    """include model parallel"""
     def __init__(self, args):
         self.light = args.light
 
