@@ -7,6 +7,7 @@ from utils import *
 from glob import glob
 import torch 
 import sys
+import numpy as np
 
 class UGATIT_MP(object) :
     """include model parallel"""
@@ -161,7 +162,9 @@ class UGATIT_MP(object) :
         # training loop
         print('training start !')
         start_time = time.time()
+        it_times = []
         for step in range(start_iter, self.iteration + 1):
+            _it_start = time.time()
             if self.decay_flag and step > (self.iteration // 2):
                 self.G_optim.param_groups[0]['lr'] -= (self.lr / (self.iteration // 2))
                 self.D_optim.param_groups[0]['lr'] -= (self.lr / (self.iteration // 2))
@@ -271,8 +274,9 @@ class UGATIT_MP(object) :
             # clip parameter of AdaILN and ILN, applied after optimizer step
             self.genA2B.apply(self.Rho_clipper)
             self.genB2A.apply(self.Rho_clipper)
+            it_times.append(time.time() - _it_start)
 
-            print("[%5d/%5d] time: %4.4f d_loss: %.8f, g_loss: %.8f" % (step, self.iteration, time.time() - start_time, Discriminator_loss, Generator_loss))
+            print("[%5d/%5d] per-it-time: %4.4f ms/it; d_loss: %.8f, g_loss: %.8f" % (step, self.iteration, np.mean(it_times[-50:])*1e3, Discriminator_loss, Generator_loss))
             if step % self.print_freq == 0:
                 train_sample_num = 5
                 test_sample_num = 5
