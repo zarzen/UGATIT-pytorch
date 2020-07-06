@@ -276,7 +276,7 @@ class UGATIT_MP(object) :
             self.genB2A.apply(self.Rho_clipper)
             it_times.append(time.time() - _it_start)
 
-            print("[%5d/%5d] per-it-time: %4.4f ms/it; d_loss: %.8f, g_loss: %.8f" % (step, self.iteration, np.mean(it_times[-50:])*1e3, Discriminator_loss, Generator_loss))
+            print("[%5d/%5d] per-it-time: %4.4f ms/it; d_loss: %.8f, g_loss: %.8f" % (step, self.iteration, np.mean(it_times[-100:])*1e3, Discriminator_loss, Generator_loss))
             if step % self.print_freq == 0:
                 train_sample_num = 5
                 test_sample_num = 5
