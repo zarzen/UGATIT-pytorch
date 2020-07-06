@@ -79,8 +79,8 @@ class ResnetGenerator(nn.Module):
         self.UpBlock2 = nn.Sequential(*UpBlock2)
 
     def forward(self, input):
-        if self.model_parallel and x.device != self.cuda_device:
-            x = x.to(self.cuda_device)
+        if self.model_parallel and input.device != self.cuda_device:
+            input = input.to(self.cuda_device)
         x = self.DownBlock(input)
 
         gap = torch.nn.functional.adaptive_avg_pool2d(x, 1)
@@ -236,8 +236,8 @@ class Discriminator(nn.Module):
         self.model = nn.Sequential(*model)
 
     def forward(self, input):
-        if self.model_parallel and self.cuda_device != x.device:
-            x = x.to(self.cuda_device)
+        if self.model_parallel and self.cuda_device != input.device:
+            input = input.to(self.cuda_device)
         x = self.model(input)
 
         gap = torch.nn.functional.adaptive_avg_pool2d(x, 1)
