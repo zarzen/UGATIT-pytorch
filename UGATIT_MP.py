@@ -5,11 +5,17 @@ from torch.utils.data import DataLoader
 from networks import *
 from utils import *
 from glob import glob
+import torch 
+import sys
 
 class UGATIT_MP(object) :
     """include model parallel"""
     def __init__(self, args):
         self.light = args.light
+        self.n_gpus = args.n_gpus
+
+        if not args.enable_mp:
+            sys.exit("should not enter this branch; model parallel not enabled")
 
         if self.light :
             self.model_name = 'UGATIT_light'
@@ -108,17 +114,24 @@ class UGATIT_MP(object) :
         self.testB_loader = DataLoader(self.testB, batch_size=1, shuffle=False)
 
         """ Define Generator, Discriminator """
-        self.genA2B = ResnetGenerator(input_nc=3, output_nc=3, ngf=self.ch, n_blocks=self.n_res, img_size=self.img_size, light=self.light).to(self.device)
-        self.genB2A = ResnetGenerator(input_nc=3, output_nc=3, ngf=self.ch, n_blocks=self.n_res, img_size=self.img_size, light=self.light).to(self.device)
-        self.disGA = Discriminator(input_nc=3, ndf=self.ch, n_layers=7).to(self.device)
-        self.disGB = Discriminator(input_nc=3, ndf=self.ch, n_layers=7).to(self.device)
-        self.disLA = Discriminator(input_nc=3, ndf=self.ch, n_layers=5).to(self.device)
-        self.disLB = Discriminator(input_nc=3, ndf=self.ch, n_layers=5).to(self.device)
+        modules = {}
+        self.genA2B = modules['genA2B'] = ResnetGenerator(input_nc=3, output_nc=3, ngf=self.ch, n_blocks=self.n_res, img_size=self.img_size, light=self.light, True)
+        self.genB2A = modules['genB2A'] = ResnetGenerator(input_nc=3, output_nc=3, ngf=self.ch, n_blocks=self.n_res, img_size=self.img_size, light=self.light, True)
+        self.disGA = modules['disGA'] = Discriminator(input_nc=3, ndf=self.ch, n_layers=7, True)
+        self.disGB = modules['disGB'] = Discriminator(input_nc=3, ndf=self.ch, n_layers=7, True)
+        self.disLA = modules['disLA'] = Discriminator(input_nc=3, ndf=self.ch, n_layers=5, True)
+        self.disLB = modules['disLB'] = Discriminator(input_nc=3, ndf=self.ch, n_layers=5, True)
 
         """ Define Loss """
-        self.L1_loss = nn.L1Loss().to(self.device)
-        self.MSE_loss = nn.MSELoss().to(self.device)
-        self.BCE_loss = nn.BCEWithLogitsLoss().to(self.device)
+        self.L1_loss = modules['L1_loss'] = nn.L1Loss()
+        self.MSE_loss = modules['MSE_loss'] = nn.MSELoss()
+        self.BCE_loss = modules['BCE_loss'] = nn.BCELoss()
+        for k, module_name in enumerate(modules.keys()):
+            d = torch.device('cuda:' + str(k % self.n_gpus)) # pylint: disable=no-member
+            m = modules[module_name]
+            m = m.to(d)
+            m.cuda_device = d
+            setattr(self, module_name, m)
 
         """ Trainer """
         self.G_optim = torch.optim.Adam(itertools.chain(self.genA2B.parameters(), self.genB2A.parameters()), lr=self.lr, betas=(0.5, 0.999), weight_decay=self.weight_decay)
@@ -180,14 +193,15 @@ class UGATIT_MP(object) :
             fake_GB_logit, fake_GB_cam_logit, _ = self.disGB(fake_A2B)
             fake_LB_logit, fake_LB_cam_logit, _ = self.disLB(fake_A2B)
 
-            D_ad_loss_GA = self.MSE_loss(real_GA_logit, torch.ones_like(real_GA_logit).to(self.device)) + self.MSE_loss(fake_GA_logit, torch.zeros_like(fake_GA_logit).to(self.device))
-            D_ad_cam_loss_GA = self.MSE_loss(real_GA_cam_logit, torch.ones_like(real_GA_cam_logit).to(self.device)) + self.MSE_loss(fake_GA_cam_logit, torch.zeros_like(fake_GA_cam_logit).to(self.device))
-            D_ad_loss_LA = self.MSE_loss(real_LA_logit, torch.ones_like(real_LA_logit).to(self.device)) + self.MSE_loss(fake_LA_logit, torch.zeros_like(fake_LA_logit).to(self.device))
-            D_ad_cam_loss_LA = self.MSE_loss(real_LA_cam_logit, torch.ones_like(real_LA_cam_logit).to(self.device)) + self.MSE_loss(fake_LA_cam_logit, torch.zeros_like(fake_LA_cam_logit).to(self.device))
-            D_ad_loss_GB = self.MSE_loss(real_GB_logit, torch.ones_like(real_GB_logit).to(self.device)) + self.MSE_loss(fake_GB_logit, torch.zeros_like(fake_GB_logit).to(self.device))
-            D_ad_cam_loss_GB = self.MSE_loss(real_GB_cam_logit, torch.ones_like(real_GB_cam_logit).to(self.device)) + self.MSE_loss(fake_GB_cam_logit, torch.zeros_like(fake_GB_cam_logit).to(self.device))
-            D_ad_loss_LB = self.MSE_loss(real_LB_logit, torch.ones_like(real_LB_logit).to(self.device)) + self.MSE_loss(fake_LB_logit, torch.zeros_like(fake_LB_logit).to(self.device))
-            D_ad_cam_loss_LB = self.MSE_loss(real_LB_cam_logit, torch.ones_like(real_LB_cam_logit).to(self.device)) + self.MSE_loss(fake_LB_cam_logit, torch.zeros_like(fake_LB_cam_logit).to(self.device))
+            # pylint: disable=no-member
+            D_ad_loss_GA = self.MSE_loss(real_GA_logit, torch.ones_like(real_GA_logit).to(self.MSE_loss.cuda_device)) + self.MSE_loss(fake_GA_logit, torch.zeros_like(fake_GA_logit).to(self.MSE_loss.cuda_device))
+            D_ad_cam_loss_GA = self.MSE_loss(real_GA_cam_logit, torch.ones_like(real_GA_cam_logit).to(self.MSE_loss.cuda_device)) + self.MSE_loss(fake_GA_cam_logit, torch.zeros_like(fake_GA_cam_logit).to(self.MSE_loss.cuda_device))
+            D_ad_loss_LA = self.MSE_loss(real_LA_logit, torch.ones_like(real_LA_logit).to(self.MSE_loss.cuda_device)) + self.MSE_loss(fake_LA_logit, torch.zeros_like(fake_LA_logit).to(self.MSE_loss.cuda_device))
+            D_ad_cam_loss_LA = self.MSE_loss(real_LA_cam_logit, torch.ones_like(real_LA_cam_logit).to(self.MSE_loss.cuda_device)) + self.MSE_loss(fake_LA_cam_logit, torch.zeros_like(fake_LA_cam_logit).to(self.MSE_loss.cuda_device))
+            D_ad_loss_GB = self.MSE_loss(real_GB_logit, torch.ones_like(real_GB_logit).to(self.MSE_loss.cuda_device)) + self.MSE_loss(fake_GB_logit, torch.zeros_like(fake_GB_logit).to(self.MSE_loss.cuda_device))
+            D_ad_cam_loss_GB = self.MSE_loss(real_GB_cam_logit, torch.ones_like(real_GB_cam_logit).to(self.MSE_loss.cuda_device)) + self.MSE_loss(fake_GB_cam_logit, torch.zeros_like(fake_GB_cam_logit).to(self.MSE_loss.cuda_device))
+            D_ad_loss_LB = self.MSE_loss(real_LB_logit, torch.ones_like(real_LB_logit).to(self.MSE_loss.cuda_device)) + self.MSE_loss(fake_LB_logit, torch.zeros_like(fake_LB_logit).to(self.MSE_loss.cuda_device))
+            D_ad_cam_loss_LB = self.MSE_loss(real_LB_cam_logit, torch.ones_like(real_LB_cam_logit).to(self.MSE_loss.cuda_device)) + self.MSE_loss(fake_LB_cam_logit, torch.zeros_like(fake_LB_cam_logit).to(self.MSE_loss.cuda_device))
 
             D_loss_A = self.adv_weight * (D_ad_loss_GA + D_ad_cam_loss_GA + D_ad_loss_LA + D_ad_cam_loss_LA)
             D_loss_B = self.adv_weight * (D_ad_loss_GB + D_ad_cam_loss_GB + D_ad_loss_LB + D_ad_cam_loss_LB)
@@ -213,23 +227,23 @@ class UGATIT_MP(object) :
             fake_GB_logit, fake_GB_cam_logit, _ = self.disGB(fake_A2B)
             fake_LB_logit, fake_LB_cam_logit, _ = self.disLB(fake_A2B)
 
-            G_ad_loss_GA = self.MSE_loss(fake_GA_logit, torch.ones_like(fake_GA_logit).to(self.device))
-            G_ad_cam_loss_GA = self.MSE_loss(fake_GA_cam_logit, torch.ones_like(fake_GA_cam_logit).to(self.device))
-            G_ad_loss_LA = self.MSE_loss(fake_LA_logit, torch.ones_like(fake_LA_logit).to(self.device))
-            G_ad_cam_loss_LA = self.MSE_loss(fake_LA_cam_logit, torch.ones_like(fake_LA_cam_logit).to(self.device))
-            G_ad_loss_GB = self.MSE_loss(fake_GB_logit, torch.ones_like(fake_GB_logit).to(self.device))
-            G_ad_cam_loss_GB = self.MSE_loss(fake_GB_cam_logit, torch.ones_like(fake_GB_cam_logit).to(self.device))
-            G_ad_loss_LB = self.MSE_loss(fake_LB_logit, torch.ones_like(fake_LB_logit).to(self.device))
-            G_ad_cam_loss_LB = self.MSE_loss(fake_LB_cam_logit, torch.ones_like(fake_LB_cam_logit).to(self.device))
+            G_ad_loss_GA = self.MSE_loss(fake_GA_logit, torch.ones_like(fake_GA_logit).to(self.MSE_loss.cuda_device))
+            G_ad_cam_loss_GA = self.MSE_loss(fake_GA_cam_logit, torch.ones_like(fake_GA_cam_logit).to(self.MSE_loss.cuda_device))
+            G_ad_loss_LA = self.MSE_loss(fake_LA_logit, torch.ones_like(fake_LA_logit).to(self.MSE_loss.cuda_device))
+            G_ad_cam_loss_LA = self.MSE_loss(fake_LA_cam_logit, torch.ones_like(fake_LA_cam_logit).to(self.MSE_loss.cuda_device))
+            G_ad_loss_GB = self.MSE_loss(fake_GB_logit, torch.ones_like(fake_GB_logit).to(self.MSE_loss.cuda_device))
+            G_ad_cam_loss_GB = self.MSE_loss(fake_GB_cam_logit, torch.ones_like(fake_GB_cam_logit).to(self.MSE_loss.cuda_device))
+            G_ad_loss_LB = self.MSE_loss(fake_LB_logit, torch.ones_like(fake_LB_logit).to(self.MSE_loss.cuda_device))
+            G_ad_cam_loss_LB = self.MSE_loss(fake_LB_cam_logit, torch.ones_like(fake_LB_cam_logit).to(self.MSE_loss.cuda_device))
 
-            G_recon_loss_A = self.L1_loss(fake_A2B2A, real_A)
-            G_recon_loss_B = self.L1_loss(fake_B2A2B, real_B)
+            G_recon_loss_A = self.L1_loss(fake_A2B2A.to(self.L1_loss.cuda_device), real_A.to(self.L1_loss.cuda_device))
+            G_recon_loss_B = self.L1_loss(fake_B2A2B.to(self.L1_loss.cuda_device), real_B.to(self.L1_loss.cuda_device))
 
-            G_identity_loss_A = self.L1_loss(fake_A2A, real_A)
-            G_identity_loss_B = self.L1_loss(fake_B2B, real_B)
+            G_identity_loss_A = self.L1_loss(fake_A2A.to(self.L1_loss.cuda_device), real_A.to(self.L1_loss.cuda_device))
+            G_identity_loss_B = self.L1_loss(fake_B2B.to(self.L1_loss.cuda_device), real_B.to(self.L1_loss.cuda_device))
 
-            G_cam_loss_A = self.BCE_loss(fake_B2A_cam_logit, torch.ones_like(fake_B2A_cam_logit).to(self.device)) + self.BCE_loss(fake_A2A_cam_logit, torch.zeros_like(fake_A2A_cam_logit).to(self.device))
-            G_cam_loss_B = self.BCE_loss(fake_A2B_cam_logit, torch.ones_like(fake_A2B_cam_logit).to(self.device)) + self.BCE_loss(fake_B2B_cam_logit, torch.zeros_like(fake_B2B_cam_logit).to(self.device))
+            G_cam_loss_A = self.BCE_loss(fake_B2A_cam_logit, torch.ones_like(fake_B2A_cam_logit).to(self.BCE_loss.cuda_device)) + self.BCE_loss(fake_A2A_cam_logit, torch.zeros_like(fake_A2A_cam_logit).to(self.BCE_loss.cuda_device))
+            G_cam_loss_B = self.BCE_loss(fake_A2B_cam_logit, torch.ones_like(fake_A2B_cam_logit).to(self.BCE_loss.cuda_device)) + self.BCE_loss(fake_B2B_cam_logit, torch.zeros_like(fake_B2B_cam_logit).to(self.BCE_loss.cuda_device))
 
             G_loss_A =  self.adv_weight * (G_ad_loss_GA + G_ad_cam_loss_GA + G_ad_loss_LA + G_ad_cam_loss_LA) + self.cycle_weight * G_recon_loss_A + self.identity_weight * G_identity_loss_A + self.cam_weight * G_cam_loss_A
             G_loss_B = self.adv_weight * (G_ad_loss_GB + G_ad_cam_loss_GB + G_ad_loss_LB + G_ad_cam_loss_LB) + self.cycle_weight * G_recon_loss_B + self.identity_weight * G_identity_loss_B + self.cam_weight * G_cam_loss_B

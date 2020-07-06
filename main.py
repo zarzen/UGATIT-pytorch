@@ -1,4 +1,5 @@
 from UGATIT import UGATIT
+from UGATIT_MP import UGATIT_MP
 import argparse
 from utils import *
 
@@ -36,6 +37,9 @@ def parse_args():
     parser.add_argument('--benchmark_flag', type=str2bool, default=False)
     parser.add_argument('--resume', type=str2bool, default=False)
 
+    parser.add_argument('--enable-mp', type=bool, default=False, help='enable model parallel or not')
+    parser.add_argument('--n-gpus', type=int, default=1, help='number of gpus used for model parallel')
+
     return check_args(parser.parse_args())
 
 """checking arguments"""
@@ -66,7 +70,10 @@ def main():
       exit()
 
     # open session
-    gan = UGATIT(args)
+    if args.enable_mp:
+        gan = UGATIT_MP(args)
+    else:
+        gan = UGATIT(args)
 
     # build graph
     gan.build_model()

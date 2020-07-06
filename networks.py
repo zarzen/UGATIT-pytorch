@@ -4,7 +4,7 @@ from torch.nn.parameter import Parameter
 
 
 class ResnetGenerator(nn.Module):
-    def __init__(self, input_nc, output_nc, ngf=64, n_blocks=6, img_size=256, light=False):
+    def __init__(self, input_nc, output_nc, ngf=64, n_blocks=6, img_size=256, light=False, model_parallel=False):
         assert(n_blocks >= 0)
         super(ResnetGenerator, self).__init__()
         self.input_nc = input_nc
@@ -13,6 +13,8 @@ class ResnetGenerator(nn.Module):
         self.n_blocks = n_blocks
         self.img_size = img_size
         self.light = light
+        self.cuda_device = None
+        self.model_parallel = model_parallel
 
         DownBlock = []
         DownBlock += [nn.ReflectionPad2d(3),
@@ -77,6 +79,8 @@ class ResnetGenerator(nn.Module):
         self.UpBlock2 = nn.Sequential(*UpBlock2)
 
     def forward(self, input):
+        if self.model_parallel and x.device != self.cuda_device:
+            x = x.to(self.cuda_device)
         x = self.DownBlock(input)
 
         gap = torch.nn.functional.adaptive_avg_pool2d(x, 1)
@@ -195,8 +199,11 @@ class ILN(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, input_nc, ndf=64, n_layers=5):
+    def __init__(self, input_nc, ndf=64, n_layers=5, model_parallel=False):
         super(Discriminator, self).__init__()
+        self.cuda_device = None
+        self.model_parallel = model_parallel
+
         model = [nn.ReflectionPad2d(1),
                  nn.utils.spectral_norm(
                  nn.Conv2d(input_nc, ndf, kernel_size=4, stride=2, padding=0, bias=True)),
@@ -229,6 +236,8 @@ class Discriminator(nn.Module):
         self.model = nn.Sequential(*model)
 
     def forward(self, input):
+        if self.model_parallel and self.cuda_device != x.device:
+            x = x.to(self.cuda_device)
         x = self.model(input)
 
         gap = torch.nn.functional.adaptive_avg_pool2d(x, 1)
