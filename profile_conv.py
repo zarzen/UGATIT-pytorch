@@ -15,6 +15,7 @@ def get_args():
     parser.add_argument("--dim", type=int, default=256, help="residual block in&out channels")
     parser.add_argument("--img-sizes", type=str, default="32-64-128", help="profile on different sizes of inputs")
     parser.add_argument("--block-type", type=str, default="resnet", help="resnet/ailn")
+    parser.add_argument("--sep-fwd", type=bool, default=False)
 
     return parser.parse_args()
 
@@ -40,6 +41,7 @@ def main():
     for s in exp_sizes:
         
         ts = []
+        fwd_ts = []
         for _ in range(args.repeat):
             one_batch = torch.rand((bs, args.dim, s, s)) # pylint: disable=no-member
             one_batch = one_batch.cuda()
@@ -60,13 +62,20 @@ def main():
                     outputs = b(outputs, gamma, beta)
             else:
                 outputs = down_or_up(one_batch)
-
+    
             fake_loss = outputs.sum()
+
+            if args.sep_fwd:
+                torch.cuda.synchronize()
+                fwd_ts.append(time.time() - _start_time)
+
             fake_loss.backward()
             torch.cuda.synchronize()
             ts.append(time.time() - _start_time)
-
-        print("img-size {}, average fwd bwd time {} ms".format(s, np.mean(ts[-100:]) * 1e3))
+        if not args.sep_fwd:
+            print("img-size {}, average fwd bwd time {} ms".format(s, np.mean(ts[-100:]) * 1e3))
+        else:
+            print("img-size {}, average fwd {} ms; fwd&bwd time {} ms".format(s, np.mean(fwd_ts[-100:])*1e3, np.mean(ts[-100:]) * 1e3))
 
 
 if __name__ == "__main__":
