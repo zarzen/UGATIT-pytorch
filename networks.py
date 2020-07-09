@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 from torch.nn.parameter import Parameter
+import time
+import numpy as np
 
 
 class ResnetGenerator(nn.Module):
@@ -78,10 +80,23 @@ class ResnetGenerator(nn.Module):
         self.FC = nn.Sequential(*FC)
         self.UpBlock2 = nn.Sequential(*UpBlock2)
 
+        self.timers = {}
+        self.timers['encoder'] = []
+        self.timers['decoder'] = []
+    
+    def avg_encoder_decoder_time(self):
+        """"""
+        print("fwd encode: {} ms; decode {} ms".format(np.mean(self.timers['encoder'][-50:]) * 1e3, 
+                                                        np.mean(self.timers['decoder'][-50:]) * 1e3))
+
     def forward(self, input):
         if self.model_parallel and input.device != self.cuda_device:
             input = input.to(self.cuda_device)
+        torch.cuda.synchronize()
+        _t1 = time.time()
         x = self.DownBlock(input)
+        torch.cuda.synchronize()
+        self.timers['encoder'].append(time.time() - _t1)
 
         gap = torch.nn.functional.adaptive_avg_pool2d(x, 1)
         gap_logit = self.gap_fc(gap.view(x.shape[0], -1))
@@ -106,10 +121,13 @@ class ResnetGenerator(nn.Module):
             x_ = self.FC(x.view(x.shape[0], -1))
         gamma, beta = self.gamma(x_), self.beta(x_)
 
-
+        torch.cuda.synchronize()
+        _t1 = time.time()
         for i in range(self.n_blocks):
             x = getattr(self, 'UpBlock1_' + str(i+1))(x, gamma, beta)
         out = self.UpBlock2(x)
+        torch.cuda.synchronize()
+        self.timers['decoder'].append(time.time() - _t1)
 
         return out, cam_logit, heatmap
 

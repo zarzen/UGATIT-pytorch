@@ -6,6 +6,7 @@ from networks import *
 from utils import *
 from glob import glob
 import numpy as np
+import torch
 
 class UGATIT(object) :
     def __init__(self, args):
@@ -166,10 +167,15 @@ class UGATIT(object) :
 
             real_A, real_B = real_A.to(self.device), real_B.to(self.device)
 
+            genA2B_ts = []
             # Update D
             self.D_optim.zero_grad()
-
+            torch.cuda.synchronize()
+            _t1 = time.time()
             fake_A2B, _, _ = self.genA2B(real_A)
+            torch.cuda.synchronize()
+            genA2B_ts.append(time.time() - _t1)
+
             fake_B2A, _, _ = self.genB2A(real_B)
 
             real_GA_logit, real_GA_cam_logit, _ = self.disGA(real_A)
@@ -201,14 +207,29 @@ class UGATIT(object) :
             # Update G
             self.G_optim.zero_grad()
 
+            torch.cuda.synchronize()
+            _t1 = time.time()
             fake_A2B, fake_A2B_cam_logit, _ = self.genA2B(real_A)
+            torch.cuda.synchronize()
+            genA2B_ts += [time.time() - _t1]
+
             fake_B2A, fake_B2A_cam_logit, _ = self.genB2A(real_B)
 
             fake_A2B2A, _, _ = self.genB2A(fake_A2B)
+
+            torch.cuda.synchronize()
+            _t1 = time.time()
             fake_B2A2B, _, _ = self.genA2B(fake_B2A)
+            torch.cuda.synchronize()
+            genA2B_ts += [time.time() - _t1]
 
             fake_A2A, fake_A2A_cam_logit, _ = self.genB2A(real_A)
+
+            torch.cuda.synchronize()
+            _t1 = time.time()
             fake_B2B, fake_B2B_cam_logit, _ = self.genA2B(real_B)
+            torch.cuda.synchronize()
+            genA2B_ts += [time.time() - _t1]
 
             fake_GA_logit, fake_GA_cam_logit, _ = self.disGA(fake_B2A)
             fake_LA_logit, fake_LA_cam_logit, _ = self.disLA(fake_B2A)
@@ -246,6 +267,9 @@ class UGATIT(object) :
             it_times.append(time.time() - _it_start)
 
             print("[%5d/%5d] per-it-time: %4.4f ms/it; d_loss: %.8f, g_loss: %.8f" % (step, self.iteration, np.mean(it_times[-100:])*1e3, Discriminator_loss, Generator_loss))
+            print("averge time of genA2B %4.4f" % (np.mean(genA2B_ts) * 1e3))
+            self.genA2B.avg_encoder_decoder_time()
+
             if step % self.print_freq == 0:
                 train_sample_num = 5
                 test_sample_num = 5
