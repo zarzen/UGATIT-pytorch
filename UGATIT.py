@@ -201,14 +201,20 @@ class UGATIT(object) :
             D_loss_B = self.adv_weight * (D_ad_loss_GB + D_ad_cam_loss_GB + D_ad_loss_LB + D_ad_cam_loss_LB)
 
             Discriminator_loss = D_loss_A + D_loss_B
+            torch.cuda.synchronize()
+            __t2 = time.time()
+            print('first stage forward', (__t2 - _it_start)*1e3, 'ms')
             Discriminator_loss.backward()
             self.D_optim.step()
+            torch.cuda.synchronize()
+            __t3 = time.time()
+            print('first stage backward&opt', (__t3 - __t2)*1e3, 'ms')
 
             # Update G
             self.G_optim.zero_grad()
 
             torch.cuda.synchronize()
-            _t1 = time.time()
+            _sec_stage_start = _t1 = time.time()
             fake_A2B, fake_A2B_cam_logit, _ = self.genA2B(real_A)
             torch.cuda.synchronize()
             genA2B_ts += [time.time() - _t1]
@@ -258,8 +264,14 @@ class UGATIT(object) :
             G_loss_B = self.adv_weight * (G_ad_loss_GB + G_ad_cam_loss_GB + G_ad_loss_LB + G_ad_cam_loss_LB) + self.cycle_weight * G_recon_loss_B + self.identity_weight * G_identity_loss_B + self.cam_weight * G_cam_loss_B
 
             Generator_loss = G_loss_A + G_loss_B
+            torch.cuda.synchronize()
+            _sec_stage_fwd_end = time.time()
             Generator_loss.backward()
             self.G_optim.step()
+            torch.cuda.synchronize()
+            _sec_stage_bwd_end = time.time()
+            print("2n stage, fwd {} ms, bwd {} ms".format((_sec_stage_fwd_end - _sec_stage_start) * 1e3, 
+                                                            (_sec_stage_bwd_end - _sec_stage_fwd_end) * 1e3))
 
             # clip parameter of AdaILN and ILN, applied after optimizer step
             self.genA2B.apply(self.Rho_clipper)
