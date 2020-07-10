@@ -7,7 +7,7 @@ import numpy as np
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--size-order', type=int, default=20)
+    parser.add_argument('--size-order', type=int, default=23)
     parser.add_argument('--op', type=str, default='allreduce', help="allreduce/allgather")
     parser.add_argument('--repeat', type=int, default=100)
     parser.add_argument('--world-size', type=int, required=True)
@@ -36,6 +36,10 @@ def main():
         for _ in range(args.repeat):
             t = torch.rand((s,)).cuda()
             t_list = []
+            if args.op == 'allgather':
+                for _ in range(args.world_size):
+                    t_list.append(torch.zeros_like(t).cuda())
+
             t1 = time.time()
             if args.op == 'allreduce':
                 h = dist.all_reduce(t, async_op=args.async)
@@ -46,10 +50,12 @@ def main():
             if args.async:
                 while not h.is_completed():
                     pass
+            torch.cuda.synchronize()
             t2 = time.time()
             t_deltas += [t2 - t1]
-        
-        print("size {}; op {} takes {} ms".format(s, args.op, np.mean(t_deltas) * 1e3))
+
+        if args.rank == 0:
+            print("size {}; op {} takes {} ms".format(s, args.op, np.mean(t_deltas) * 1e3))
 
 
 if __name__ == "__main__":
