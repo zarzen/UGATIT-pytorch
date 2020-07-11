@@ -23,11 +23,12 @@ def get_args():
 def main():
     """"""
     args = get_args()
-    exp_sizes = [int(s) for s in args.img_sizes.split('-')]
+    
     bs = args.batch_size
 
     s = args.img_size
     gen = ResnetGenerator(3, 3, args.ngf, args.res_n, s)
+    opt = torch.optim.Adam(gen.parameters())
     loss_fn = torch.nn.MSELoss().cuda()
     gen = gen.cuda()
 
@@ -36,24 +37,33 @@ def main():
     for _ in range(args.repeat):
         # pylint: disable=no-member
         one_batch = torch.rand((bs, 3, s, s)).cuda()
-        rand_img = torch.rand((bs, 3, s, s)).cuda() 
+        rand_img = torch.rand((bs, 3, s, s)).cuda()
+        rand_img2 = torch.rand((bs, 3, s, s)).cuda()
 
+        opt.zero_grad()
         torch.cuda.synchronize()
         _start_time = time.time()
 
         fake_img, _, _ = gen(one_batch)
 
-        loss = loss_fn(fake_img, rand_img)
+        loss1 = loss_fn(fake_img, rand_img)
+        loss2 = loss_fn(fake_img, rand_img2)
+        loss = loss1 + loss2
 
         if args.sep_fwd:
             torch.cuda.synchronize()
             fwd_ts.append(time.time() - _start_time)
 
         loss.backward()
+
+        opt.step()
         torch.cuda.synchronize()
         ts.append(time.time() - _start_time)
 
-    print("img-size {}, average fwd bwd time {} ms".format(s, np.mean(ts[-100:]) * 1e3))
+    if not args.sep_fwd:
+        print("img-size {}, average fwd bwd time {} ms".format(s, np.mean(ts[-100:]) * 1e3))
+    else:
+        print("img-size {}, average fwd {} ms; fwd&bwd time {} ms".format(s, np.mean(fwd_ts[-100:])*1e3, np.mean(ts[-100:]) * 1e3))
     
 
 
