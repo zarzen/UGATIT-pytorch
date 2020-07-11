@@ -23,7 +23,7 @@ def get_args():
 def main():
     """"""
     args = get_args()
-    
+
     bs = args.batch_size
 
     s = args.img_size
@@ -59,13 +59,9 @@ def main():
         opt.step()
         torch.cuda.synchronize()
         ts.append(time.time() - _start_time)
+        
 
-    if not args.sep_fwd:
-        print("img-size {}, average fwd bwd time {} ms".format(s, np.mean(ts[-100:]) * 1e3))
-    else:
-        print("img-size {}, average fwd {} ms; fwd&bwd time {} ms".format(s, np.mean(fwd_ts[-100:])*1e3, np.mean(ts[-100:]) * 1e3))
-    
-
+    print("img-size {}, average fwd {} ms; fwd&bwd time {} ms".format(s, np.mean(fwd_ts[-100:])*1e3, np.mean(ts[-100:]) * 1e3))
 
 
 if __name__ == "__main__":
