@@ -256,23 +256,23 @@ def compute_data_block(input_size, rank, kernel_size, padding, stride):
     so the padding is included in the input_size
     """
     input_size += 2 * padding
-    output_size = ((input_size - kernel_size) / stride) + 1
+    output_size = ((input_size - kernel_size) // stride) + 1
     # assume world size 4
     if rank == 0:
         return [0, int((output_size // 2 - 1) * stride + kernel_size), 
                 0, int((output_size // 2 - 1) * stride + kernel_size)]
     elif rank == 1:
         return [0, int((output_size // 2 - 1) * stride + kernel_size), 
-                int(input_size - ((output_size // 2 - 1) * stride + kernel_size)),
+                int((output_size//2) * stride),
                 int(input_size)]
     elif rank == 2:
-        return [int(input_size - ((output_size // 2 - 1) * stride + kernel_size)),
+        return [int((output_size//2) * stride),
                 int(input_size),
                 0, int((output_size // 2 - 1) * stride + kernel_size)]
     elif rank == 3:
-        return [int(input_size - ((output_size // 2 - 1) * stride + kernel_size)),
+        return [int((output_size//2) * stride),
                 int(input_size),
-                int(input_size - ((output_size // 2 - 1) * stride + kernel_size)),
+                int((output_size//2) * stride),
                 int(input_size)]
     else:
         return None

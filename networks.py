@@ -4,7 +4,7 @@ from torch.nn.parameter import Parameter
 
 
 class ResnetGenerator(nn.Module):
-    def __init__(self, input_nc, output_nc, ngf=64, n_blocks=6, img_size=256, light=False, model_parallel=False):
+    def __init__(self, input_nc, output_nc, ngf=64, n_blocks=6, img_size=256, light=False, model_parallel=False, random_seed=123):
         assert(n_blocks >= 0)
         super(ResnetGenerator, self).__init__()
         self.input_nc = input_nc
@@ -15,6 +15,7 @@ class ResnetGenerator(nn.Module):
         self.light = light
         self.cuda_device = None
         self.model_parallel = model_parallel
+        torch.manual_seed(random_seed)
 
         DownBlock = []
         DownBlock += [nn.ReflectionPad2d(3),

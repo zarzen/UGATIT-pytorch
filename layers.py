@@ -11,6 +11,7 @@ class AttributeParallelConv2d(nn.Module):
     def __init__(self, key, mp_plan, in_channel, out_channel, kernel_size=7, stride=1, padding=0, bias=False):
         super(AttributeParallelConv2d, self).__init__()
 
+        self.name = key
         self.parallel_inputs = mp_plan[key]['parallel_inputs']
         self.input_chunk_info = mp_plan[key]['input_chunk']
         self.gather_outputs = mp_plan[key]['gather_outputs']
@@ -27,9 +28,9 @@ class AttributeParallelConv2d(nn.Module):
         world_size = dist.get_world_size()
         # pylint: disable=no-member
         tensor_list = [torch.empty_like(x) for _ in range(world_size)]
-        tensor_list[rank] = x
-
+        
         dist.all_gather(tensor_list, x)
+        tensor_list[rank] = x
         return self._assemble_outputs(tensor_list)
 
     def _assemble_outputs(self, gathered):
@@ -155,7 +156,7 @@ class MPILN(nn.Module):
 
 
 class ModelParallelResnetGenerator(nn.Module):
-    def __init__(self, mp_plan, input_nc, output_nc, ngf=64, n_blocks=6, img_size=256, light=False, model_parallel=False):
+    def __init__(self, mp_plan, input_nc, output_nc, ngf=64, n_blocks=6, img_size=256, light=False, model_parallel=False, random_seed=123):
         assert(n_blocks >= 0)
         super(ModelParallelResnetGenerator, self).__init__()
         self.input_nc = input_nc
@@ -166,6 +167,7 @@ class ModelParallelResnetGenerator(nn.Module):
         self.light = light
         self.cuda_device = None
         self.model_parallel = model_parallel
+        torch.manual_seed(random_seed)
 
         DownBlock = []
         DownBlock += [nn.ReflectionPad2d(3),
