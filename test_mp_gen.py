@@ -138,11 +138,11 @@ def main():
     for i in range(len(orig_conv_outputs)):
         input_match = torch.allclose(orig_conv_outputs[i][0], mp_conv_outputs[i][0], atol=1e-05)
         output_match = torch.allclose(orig_conv_outputs[i][1], mp_conv_outputs[i][1], atol=1e-05)
-        print('intermediate results are close', input_match, output_match)
+        print(args.rank, 'intermediate results are close', input_match, output_match)
 
-    print('final outputs 0', torch.allclose(can_output[0].cpu(), output_img[0].cpu(), atol=1e-5))
-    print('final outputs 1',torch.allclose(can_output[1].cpu(), output_img[1].cpu(), atol=1e-5))
-    print('final outputs 2',torch.allclose(can_output[2].cpu(), output_img[2].cpu(), atol=1e-5))
+    print(args.rank, 'final outputs 0', torch.allclose(can_output[0].cpu(), output_img[0].cpu(), atol=1e-5))
+    print(args.rank, 'final outputs 1',torch.allclose(can_output[1].cpu(), output_img[1].cpu(), atol=1e-5))
+    print(args.rank, 'final outputs 2',torch.allclose(can_output[2].cpu(), output_img[2].cpu(), atol=1e-5))
 
 
 if __name__ == "__main__":
