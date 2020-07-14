@@ -16,7 +16,7 @@ def get_args():
     parser.add_argument('--rank', type=int, required=True)
     parser.add_argument('--rank0-ip', type=str, default='localhost')
     parser.add_argument('--rank0-port', type=str, default='6666')
-    parser.add_argument('--async', type=bool, default=False)
+    parser.add_argument('--asyn', type=int, default=0)
 
     return parser.parse_args()
 
@@ -24,6 +24,10 @@ def get_args():
 def main():
     """"""
     args = get_args()
+    if args.asyn > 0:
+        args.asyn = True
+    else:
+        args.asyn = False
     # init cuda
     torch.rand(100).cuda().sum()
 
@@ -46,14 +50,14 @@ def main():
 
             t1 = time.time()
             if args.op == 'allreduce':
-                h = dist.all_reduce(t, async_op=args.async)
+                h = dist.all_reduce(t, async_op=args.asyn)
             elif args.op == 'allgather':
-                h = dist.all_gather(t_list, t, async_op=args.async)
+                h = dist.all_gather(t_list, t, async_op=args.asyn)
             else:
                 return -1
-
-            if args.async:
-                func_ret += [time.time() - t1]
+            
+            func_ret += [time.time() - t1]
+            if args.asyn:
                 while not h.is_completed():
                     pass
             torch.cuda.synchronize()
@@ -61,12 +65,8 @@ def main():
             t_deltas += [t2 - t1]
 
         if args.rank == 0:
-            if not args.async:
-                print("size {}; op {} takes {} ms".format(
-                    s, args.op, np.mean(t_deltas) * 1e3))
-            else:
-                print("size {}; op {} takes {} ms; func ret {} ms".format(s, args.op,
-                                                                          np.mean(t_deltas) * 1e3, np.mean(func_ret) * 1e3))
+            print('async', args.asyn, "size {}; op {} takes {:.3f} ms; func ret {:.3f} ms".format(s, args.op,
+                                                                        np.mean(t_deltas) * 1e3, np.mean(func_ret) * 1e3))
 
 
 if __name__ == "__main__":
