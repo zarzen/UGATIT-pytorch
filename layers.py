@@ -30,6 +30,7 @@ class AttributeParallelConv2d(nn.Module):
         tensor_list = [torch.empty_like(x) for _ in range(world_size)]
         
         dist.all_gather(tensor_list, x)
+        # torch.cuda.synchronize()
         tensor_list[rank] = x
         return self._assemble_outputs(tensor_list)
 
