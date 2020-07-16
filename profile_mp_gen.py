@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 
-from layers import ModelParallelResnetGenerator, AttributeParallelConv2d
+from layers import ModelParallelResnetGenerator, AttributeParallelConv2d, average_event_time
 from networks import ResnetGenerator
 from conf import get_conf
 import pickle
@@ -71,6 +71,7 @@ def main():
     # check intermediate outputs are close
 
     print_rank0(args.rank, "average fwd time", np.mean(ts)*1e3, 'ms')
+    average_event_time()
 
 if __name__ == "__main__":
     main()

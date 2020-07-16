@@ -3,6 +3,20 @@ import torch.nn as nn
 import torch.distributed as dist
 from torch.nn.parameter import Parameter
 import math
+import numpy as np
+
+cuda_events = []
+
+def average_event_time():
+    rank = dist.get_rank()
+    ts = []
+    for s, e in cuda_events:
+        e.synchronize()
+        elapsed_time_ms = s.elapsed_time(e)
+        ts += [elapsed_time_ms]
+    
+    print('at rank', rank, 'avg allgather time: ', np.mean(ts[-200:]), 'ms',
+            'std:', np.std(ts[-200:]))
 
 
 class AttributeParallelConv2d(nn.Module):
@@ -28,9 +42,15 @@ class AttributeParallelConv2d(nn.Module):
         world_size = dist.get_world_size()
         # pylint: disable=no-member
         tensor_list = [torch.empty_like(x) for _ in range(world_size)]
-        
+
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+
+        start_event.record()
         dist.all_gather(tensor_list, x)
         # torch.cuda.synchronize()
+        end_event.record()
+        cuda_events.append([start_event, end_event])
         tensor_list[rank] = x
         return self._assemble_outputs(tensor_list)
 
