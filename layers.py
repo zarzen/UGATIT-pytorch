@@ -6,8 +6,9 @@ import math
 import numpy as np
 
 cuda_events = []
+conv_events = []
 
-def average_event_time():
+def average_event_time(n_batches):
     rank = dist.get_rank()
     ts = []
     for s, e in cuda_events:
@@ -16,7 +17,14 @@ def average_event_time():
         ts += [elapsed_time_ms]
     
     print('at rank', rank, 'avg allgather time: ', np.mean(ts[-200:]), 'ms',
-            'std:', np.std(ts[-200:]))
+            'std:', np.std(ts[-200:]), 'total allgater time per batch', sum(ts)/n_batches, 'ms')
+    
+    conv_ts = []
+    for s, e in conv_events:
+        e.synchronize()
+        elapsed_time_ms = s.elapsed_time(e)
+        conv_ts += [elapsed_time_ms]
+    print('at rank', rank, 'conv cost avg (ms)', np.mean(conv_ts[-200:]))
 
 
 class AttributeParallelConv2d(nn.Module):
@@ -68,7 +76,14 @@ class AttributeParallelConv2d(nn.Module):
         """"""
         if not self.parallel_inputs:
             input = self._split_input(input, self.input_chunk_info)
+
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+
+        start_event.record()
         x = self.conv(input)
+        end_event.record()
+        conv_events.append([start_event, end_event])
 
         if self.gather_outputs:
             x = self._gather_output(x)

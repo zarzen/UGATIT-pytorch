@@ -22,6 +22,40 @@ def get_args():
 
     return parser.parse_args()
 
+conv_event_lst = []
+
+def print_conv_avg_time():
+    ts = []
+    for s, e in conv_event_lst:
+        e.synchronize()
+        elp_ms = s.elapsed_time(e)
+        ts += [elp_ms]
+    print('avg conv takes (ms)', np.mean(ts[-200:]))
+
+
+def record_conv_layer(module):
+    childs = list(module.children())
+
+    def _create_start_record(mod, input):
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+        conv_event_lst.append([start_event, end_event])
+        start_event.record()
+
+    def _after_fwd(mod, input, output):
+        conv_event_lst[-1][1].record()
+    
+    if isinstance(module, torch.nn.Conv2d):
+        if module.kernel_size[0] > 1:
+            module.register_forward_pre_hook(_create_start_record)
+            module.register_forward_hook(_after_fwd)
+
+    if len(childs) == 0:
+        return
+    else:
+        for c in childs:
+            record_conv_layer(c)
+
 
 def main():
     """"""
@@ -35,6 +69,8 @@ def main():
     s = args.img_size
     orig_gen = ResnetGenerator(3, 3, args.ngf, 4, args.img_size, random_seed=args.random_seed)
     orig_gen = orig_gen.cuda()
+    record_conv_layer(orig_gen)
+
     print('repeat', args.repeat)
     print('warmup', args.warm_up)
     print('img-size', args.img_size)
@@ -58,6 +94,7 @@ def main():
     # check intermediate outputs are close
 
     print( "average fwd time", np.mean(ts)*1e3, 'ms')
+    print_conv_avg_time()
 
 if __name__ == "__main__":
     main()

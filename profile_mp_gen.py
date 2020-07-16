@@ -71,7 +71,7 @@ def main():
     # check intermediate outputs are close
 
     print_rank0(args.rank, "average fwd time", np.mean(ts)*1e3, 'ms')
-    average_event_time()
+    average_event_time(args.repeat)
 
 if __name__ == "__main__":
     main()
